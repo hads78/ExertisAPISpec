@@ -1,0 +1,537 @@
+openapi: 3.0.3
+info:
+  title: Exertis API & Web Services
+  version: "1.01"
+  description: |
+    Combined specification for the Exertis API Services and Web-Service file operations.
+
+    ## Notes On Integration Selection
+    
+    To place orders you can use the "/v1/order_load" endpoint to send us either our standard JSON or XML
+    order documents.
+    
+    You can also place orders using the file management tools.
+    
+    To receive responses you can either choose to manage file collection yourself, using the file management tools or we can post files to an endpoint of your choice using.
+    
+    ## Webhooks for Return Documents
+    
+    We primarily support three event driven webhooks.
+    - Order Responses: Confirmation of the order with expected delivery information and processing issues.
+      NOTE This can be setup as a single response or multiple responses.
+    - Despatch Confirmation: Generated when the order is despatched from our warehouse.
+    - Invoice: Generated following despatch of the goods from our warehouse.
+      
+    Refer to the "Webhooks" section below for expected payloads sent following each major event in an order's lifecycle.
+    
+    ## API Endpoints
+
+    ### Order Placement and Stock Check
+    - **/v1/order_load** – Place an order (JSON or XML)
+    - **/v1.1/stock_check** – Submit a stock and price check
+
+    ### File Management
+    - **/webservices/uploadfile** – Upload supporting files
+    - **/webservices/listfiles** – List available files
+    - **/webservices/downloadfile** – Download a specific file
+    - **/webservices/deletefile** – Delete a specific file
+    - **/webservices/getnextfile** – Retrieve & auto-delete the next file in queue
+   
+servers:
+  - url: https://b2b-test.exertis.ws
+    description: Test environment
+  - url: https://b2b.exertis.ws
+    description: Production environment
+
+paths:
+  ############################################################
+  # API calls
+  ############################################################
+  /v1.1/stock_check:
+    post:
+      tags:
+        - API calls
+      summary: Submit a stock and price check to Exertis
+      description: |
+        Submit a JSON- or XML-formatted stock and price request to the Exertis
+        API using basic authentication.
+      operationId: submitStockcheck
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version:
+                  type: string
+                documentheader:
+                  type: object
+                  properties:
+                    loginid:   { type: string }
+                    password:  { type: string }
+                    company:   { type: string }
+                    timestamp: { type: string }
+                skulist:
+                  type: array
+                  items:
+                    type: string
+            example:
+              version: "1.0"
+              documentheader:
+                loginid: "[Account#]"
+                password: "[Account#]"
+                company: "[Account#]"
+                timestamp: "2025-06-23T17:12:25"
+              skulist:
+                - "ABC123"
+                - "DEF456"
+          application/xml:
+            schema:
+              type: object
+              xml:
+                name: pnarequest
+              properties:
+                version:
+                  type: string
+                  xml:
+                    name: version
+                documentheader:
+                  type: object
+                  xml:
+                    name: documentheader
+                  properties:
+                    loginid:
+                      type: string
+                      xml:
+                        name: loginid
+                    password:
+                      type: string
+                      xml:
+                        name: password
+                    company:
+                      type: string
+                      xml:
+                        name: company
+                    timestamp:
+                      type: string
+                      xml:
+                        name: timestamp
+                skulist:
+                  type: array
+                  xml:
+                    name: skulist
+                    wrapped: true
+                  items:
+                    type: string
+                    xml:
+                      name: sku
+      responses:
+        '200':
+          description: Order response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TransactionID: { type: string }
+                  Status:
+                    type: string
+                    enum: [SUCCESS, UNAUTHORISED, INVALID]
+                  Message: { type: string }
+ 
+  
+  
+  /v1/order_load:
+    post:
+      tags:
+        - API calls
+      summary: Submit an order to Exertis
+      externalDocs:
+        description: "**Download XML XSD Pack**"
+        url: http://exertis.edi.link/to/xsd.zip
+      description: |
+        Submit a JSON- or XML-formatted order to the Exertis API using basic authentication.
+
+        **Example cURL (JSON):**
+
+        ```bash
+        curl -X POST "https://b2b-test.exertis.ws/v1/order_load" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Basic <base64-encoded-credentials>" \
+          -d '{
+            "salesOrder": {
+              "customer": "123456",
+              "orderType": "STD",
+              "orderNumber": "PO-0001",
+              "currency": "GBP",
+              "items": [
+                {
+                  "lineNumber": "1",
+                  "productCode": "ABC123",
+                  "qty": 2,
+                  "price": 12.99
+                }
+              ]
+            }
+          }'
+        ```
+
+        **Example cURL (XML):**
+
+        ```bash
+        curl -X POST "https://b2b-test.exertis.ws/v1/order_load" \
+          -H "Content-Type: application/xml" \
+          -H "Authorization: Basic <base64-encoded-credentials>" \
+          --data-binary @order.xml
+        ```
+      operationId: submitOrder
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              type: object
+              xml:
+                name: ns0:PURCHASEORDER
+              properties:
+                ns0:HEAD:
+                  type: object
+                  xml:
+                    name: ns0:HEAD
+                  properties:
+                    ns0:COSOURCE:
+                      type: string
+                      description: A pre-agreed string used in identification
+                      xml:
+                        name: ns0:COSOURCE
+                    ns0:SUPP:
+                      type: string
+                      description: Always EX
+                      xml:
+                        name: ns0:SUPP
+                    ns0:PONUM:
+                      type: string
+                      description: Your order number
+                      xml:
+                        name: ns0:PONUM
+                    ns0:CUSTPONUM:
+                      type: string
+                      description: End users PO number - if applicable
+                      xml:
+                        name: ns0:CUSTPONUM
+                    ns0:ORDERTYPE:
+                      type: string
+                      description: Used by agreement only if applicable
+                      xml:
+                        name: ns0:ORDERTYPE
+                    ns0:CONUM:
+                      type: string
+                      description: Account number with us - if previously agreed it can be sent
+                      xml:
+                        name: ns0:CONUM
+                    ns0:AUTHCODE:
+                      type: string
+                      description: Typically unused for most integrations
+                      xml:
+                        name: ns0:AUTHCODE
+                    ns0:ODATE:
+                      type: string
+                      pattern: "\\d{2}/\\d{2}/\\d{4}"
+                      description: Order date
+                      xml:
+                        name: ns0:ODATE
+                    ns0:DELMETH:
+                      type: string
+                      description: Pre-agreed delivery method
+                      xml:
+                        name: ns0:DELMETH
+                    ns0:DELPRICE:
+                      type: number
+                      format: decimal
+                      description: Cost of delivery
+                      xml:
+                        name: ns0:DELPRICE
+                    ns0:SHIPDATE:
+                      type: string
+                      pattern: "\\d{2}/\\d{2}/\\d{4}"
+                      description: Date you want the order shipped
+                      xml:
+                        name: ns0:SHIPDATE
+                    ns0:SPLITSHIPMENT:
+                      type: string
+                      enum: ["Y", "N"]
+                      description: Can we split the shipment?
+                      xml:
+                        name: ns0:SPLITSHIPMENT
+                    ns0:CURRENCY:
+                      type: string
+                      pattern: "[A-Z]{3}"
+                      description: Currency code (must be a 3-letter ISO code, e.g. GBP, USD)
+                      xml:
+                        name: ns0:CURRENCY
+                ns0:ADDR:
+                  type: object
+                  xml:
+                    name: ns0:ADDR
+                  properties:
+                    ns0:DELIVERY_ADDRESS:
+                      type: object
+                      xml:
+                        name: ns0:DELIVERY_ADDRESS
+                      properties:
+                        ns0:DNAME: { type: string, xml: { name: ns0:DNAME } }
+                        ns0:DCOMPANY: { type: string, xml: { name: ns0:DCOMPANY } }
+                        ns0:DADD1: { type: string, xml: { name: ns0:DADD1 } }
+                        ns0:DADD2: { type: string, xml: { name: ns0:DADD2 } }
+                        ns0:DADD3: { type: string, xml: { name: ns0:DADD3 } }
+                        ns0:DADD4: { type: string, xml: { name: ns0:DADD4 } }
+                        ns0:DCITY: { type: string, xml: { name: ns0:DCITY } }
+                        ns0:DPOSTCODE: { type: string, xml: { name: ns0:DPOSTCODE } }
+                        ns0:BCOUNTRY:
+                          type: string
+                          pattern: "[A-Z]{2}"
+                          description: Country code (must be a 2-letter ISO code, e.g. GB)
+                          xml:
+                            name: ns0:BCOUNTRY
+                        ns0:DTELNO: { type: string, xml: { name: ns0:DTELNO } }
+                        ns0:DEMAIL: { type: string, xml: { name: ns0:DEMAIL } }
+                ns0:LINE:
+                  type: array
+                  xml:
+                    name: ns0:LINE
+                    wrapped: true
+                  items:
+                    type: object
+                    xml:
+                      name: ns0:LINE_ITEM
+                    properties:
+                      ns0:LINENO: { type: string, xml: { name: ns0:LINENO } }
+                      ns0:CUSTCODE: { type: string, xml: { name: ns0:CUSTCODE } }
+                      ns0:MPPRODCODE: { type: string, xml: { name: ns0:MPPRODCODE } }
+                      ns0:PRICE: { type: number, format: decimal, xml: { name: ns0:PRICE } }
+                      ns0:QTY: { type: integer, xml: { name: ns0:QTY } }
+                      ns0:DESC: { type: string, xml: { name: ns0:DESC } }
+                      ns0:SHIPMENTDATE:
+                        type: string
+                        pattern: "\\d{2}/\\d{2}/\\d{4}"
+                        xml:
+                          name: ns0:SHIPMENTDATE
+                      ns0:BIDREFERENCE: { type: string, xml: { name: ns0:BIDREFERENCE } }
+          application/json:
+            schema:
+              type: object
+              properties:
+                salesOrder:
+                  type: object
+                  properties:
+                    customer: { type: string }
+                    orderType: { type: string }
+                    orderNumber: { type: string }
+                    endUserOrderNumber: { type: string }
+                    authCode: { type: string }
+                    orderDate: { type: string }
+                    deliveryMethod: { type: string }
+                    deliveryPrice: { type: string }
+                    splitShipment:
+                      type: string
+                      enum: [Y, N]
+                    currency: { type: string }
+                    shippingAddress:
+                      type: object
+                      properties:
+                        location: { type: string }
+                        deliveryName: { type: string }
+                        companyName: { type: string }
+                        addressLine1: { type: string }
+                        addressLine2: { type: string }
+                        city: { type: string }
+                        postCode: { type: string }
+                        country: { type: string }
+                        telephone: { type: string }
+                        email: { type: string }
+                    billingAddress:
+                      type: object
+                      properties:
+                        billingName: { type: string }
+                        companyName: { type: string }
+                        addressLine1: { type: string }
+                        addressLine2: { type: string }
+                        addressLine3: { type: string }
+                        city: { type: string }
+                        postCode: { type: string }
+                        country: { type: string }
+                        telephone: { type: string }
+                        email: { type: string }
+                    items:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          lineNumber: { type: string }
+                          exertisProduct: { type: string }
+                          productCode: { type: string }
+                          qty: { type: integer }
+                          price: { type: number }
+                          requiredDate: { type: string }
+                          bidReference: { type: string }
+      responses:
+        '200':
+          description: Order response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TransactionID: { type: string }
+                  Status:
+                    type: string
+                    enum: [SUCCESS, UNAUTHORISED, INVALID]
+                  Message: { type: string }
+
+  ############################################################
+  # File Management
+  ############################################################
+  /webservices/uploadfile:
+    post:
+      tags:
+        - File Management
+      summary: Upload a file
+      description: |
+        Upload a file using **multipart/form-data**. Supply the target filename via the `filename` query parameter.
+        If the `Content-Type` header includes a boundary, MIME wrapping is expected; otherwise a raw file body is accepted.
+      operationId: uploadFile
+      security:
+        - basicAuth: []
+      parameters:
+        - in: query
+          name: filename
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: File uploaded successfully
+
+  /webservices/listfiles:
+    get:
+      tags:
+        - File Management
+      summary: List files
+      description: Returns filenames that match the supplied `filemask`, one per line.
+      operationId: listFiles
+      security:
+        - basicAuth: []
+      parameters:
+        - in: query
+          name: filemask
+          required: true
+          schema:
+            type: string
+            example: order_status*.json
+      responses:
+        '200':
+          description: Plain-text list of filenames
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /webservices/downloadfile:
+    get:
+      tags:
+        - File Management
+      summary: Download a file
+      description: Download the specified file, optionally wrapped in MIME.
+      operationId: downloadFile
+      security:
+        - basicAuth: []
+      parameters:
+        - in: query
+          name: filename
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: wrapping
+          required: false
+          schema:
+            type: string
+            enum: [mime, raw]
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Bad Request or File Not Found
+
+  /webservices/deletefile:
+    post:
+      tags:
+        - File Management
+      summary: Delete a file
+      description: Deletes the specified file on the server.
+      operationId: deleteFile
+      security:
+        - basicAuth: []
+      parameters:
+        - in: query
+          name: filename
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File deleted successfully
+        '400':
+          description: Bad Request or File Not Found
+
+  /webservices/getnextfile:
+    get:
+      tags:
+        - File Management
+      summary: Get next file (and delete it)
+      description: |
+        Retrieves the next file by date, returns its content, **then automatically deletes it**.
+      operationId: getNextFile
+      security:
+        - basicAuth: []
+      parameters:
+        - in: query
+          name: wrapping
+          required: false
+          schema:
+            type: string
+            enum: [mime, raw]
+      responses:
+        '200':
+          description: Next file content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
